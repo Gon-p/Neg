@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Deluxe</title>
+<style>
+  html,body{height:100%;margin:0;background:#000;overflow:hidden;font-family:Inter,system-ui,Arial}
+  #ui{position:fixed;left:12px;top:12px;z-index:20;display:flex;gap:10px;align-items:center}
+  .icon-btn{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,0.06);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.08);color:#fff;cursor:pointer}
+  #message{position:fixed;right:18px;top:18px;color:#ffdede;font-weight:600;z-index:20;padding:10px 14px;border-radius:12px;background:linear-gradient(135deg,rgba(255,20,80,0.08),rgba(255,200,200,0.04));backdrop-filter:blur(4px)}
+  #musicLabel{font-size:13px;color:#fff;margin-left:6px}
+  #overlayText{position:fixed;left:50%;top:12%;transform:translateX(-50%);z-index:19;color:#ffdcdc;font-size:28px;text-align:center;pointer-events:none;text-shadow:0 4px 18px rgba(0,0,0,0.7)}
+  #preview{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:30;display:none;padding:6px;background:rgba(0,0,0,0.6);border-radius:8px}
+  #preview img{max-width:min(70vw,420px);max-height:70vh;border-radius:6px;display:block}
+  #closePrev{position:absolute;right:6px;top:6px;cursor:pointer;color:#fff}
+  .hint{font-size:12px;color:#eee;opacity:0.85;margin-left:8px}
+</style>
+</head>
+<body>
+<div id="ui">
+  <label class="icon-btn" id="musicBtn" title="Play/Pause música">♪</label>
+  <div id="musicLabel" class="hint">Música: OFF</div>
+</div>
+<div id="message">Feliz cumple negra. Mi Dios te bendiga siempre, te colme de sabiduria y salud. Que sean muchisimos años más de vida y poder compartir contigo infinidades de momentos.  Te amo mucho♥️</div>
+<div id="overlayText">.</div>
+<div id="preview"><span id="closePrev">✕</span><img id="prevImg"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js"></script>
+<script>
+// --------------------------- Setup básico ---------------------------
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 5000);
+camera.position.set(0,40,380);
+const renderer = new THREE.WebGLRenderer({antialias:true,alpha:false});
+renderer.setPixelRatio(devicePixelRatio);renderer.setSize(innerWidth,innerHeight);
+document.body.appendChild(renderer.domElement);
+
+let camAngle = 0;
+
+// --------------------------- Texturas ---------------------------
+function makeHeartTexture(color = '#ff6b9a'){
+  const c = document.createElement('canvas'); c.width=256; c.height=256; const ctx=c.getContext('2d');
+  ctx.clearRect(0,0,256,256);
+  ctx.fillStyle = color; ctx.beginPath();
+  const x=128,y=120,s=72;
+  ctx.moveTo(x, y+s/2);
+  ctx.bezierCurveTo(x+s, y-s*0.3, x+s*1.1, y+s*1.2, x, y+s*1.7);
+  ctx.bezierCurveTo(x-s*1.1, y+s*1.2, x-s, y-s*0.3, x, y+s/2);
+  ctx.closePath(); ctx.fill();
+  ctx.globalCompositeOperation='lighter';
+  for(let i=0;i<4;i++){ ctx.fillStyle = `rgba(255,150,170,${0.08})`; ctx.beginPath(); ctx.arc(x,y+10,80+i*20,0,Math.PI*2); ctx.fill(); }
+  return new THREE.CanvasTexture(c);
+}
+
+function makeNebulaTexture(){
+  const c = document.createElement('canvas'); c.width=1024; c.height=512; const ctx=c.getContext('2d');
+  const grad = ctx.createLinearGradient(0,0,1024,512);
+  grad.addColorStop(0,'rgba(255,90,120,0.07)');
+  grad.addColorStop(0.4,'rgba(100,80,255,0.06)');
+  grad.addColorStop(1,'rgba(0,200,255,0.03)');
+  ctx.fillStyle = grad; ctx.fillRect(0,0,1024,512);
+  for(let i=0;i<12;i++){ ctx.globalCompositeOperation='lighter'; ctx.fillStyle=`rgba(${20+i*10},${30+i*15},${120+i*8},${0.02+Math.random()*0.06})`; ctx.beginPath(); ctx.ellipse(Math.random()*1024,Math.random()*512,120+Math.random()*220,60+Math.random()*160,Math.random()*Math.PI,0,Math.PI*2); ctx.fill(); }
+  return new THREE.CanvasTexture(c);
+}
+
+const heartTex = makeHeartTexture();
+const nebulaTex = makeNebulaTexture();
+
+// Fondo estrellas
+const starGeo = new THREE.BufferGeometry();
+const starCount = 90000;
+const starPos = new Float32Array(starCount*3);
+const starSize = new Float32Array(starCount);
+for(let i=0;i<starCount;i++){ starPos[i*3]=(Math.random()-0.5)*3000; starPos[i*3+1]=(Math.random()-0.5)*3000; starPos[i*3+2]=(Math.random()-0.5)*3000; starSize[i]=Math.random()*1.8+0.2; }
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos,3));
+starGeo.setAttribute('size', new THREE.BufferAttribute(starSize,1));
+const starMat = new THREE.PointsMaterial({color:0xffffff,size:1.6,transparent:true,opacity:0.85});
+const stars = new THREE.Points(starGeo, starMat); scene.add(stars);
+
+// Nebulosa
+const nebulaMat = new THREE.MeshBasicMaterial({map:nebulaTex,transparent:true,opacity:0.9,depthWrite:false});
+const nebulaPlane = new THREE.Mesh(new THREE.PlaneGeometry(2000,1000), nebulaMat); nebulaPlane.position.set(0,-100,-800); scene.add(nebulaPlane);
+
+// Planeta
+const planetGeo = new THREE.SphereGeometry(70,64,64);
+const discTex = new THREE.TextureLoader().load('https://threejs.org/examples/textures/sprites/disc.png');
+const planetMat = new THREE.PointsMaterial({map:discTex,color:0xff6b6b,size:0.9,transparent:true,opacity:0.95});
+const planet = new THREE.Points(planetGeo, planetMat); scene.add(planet);
+
+// Anillos
+function makeRing(pCount, rMin, rMax, useHearts=false){
+  const g = new THREE.BufferGeometry(); const pos = new Float32Array(pCount*3);
+  for(let i=0;i<pCount;i++){ const a=Math.random()*Math.PI*2; const r = rMin + Math.random()*(rMax-rMin); pos[i*3]=Math.cos(a)*r; pos[i*3+1]=(Math.random()-0.5)*8; pos[i*3+2]=Math.sin(a)*r; }
+  g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  const mat = new THREE.PointsMaterial({map: useHearts?heartTex:discTex,size:useHearts?12:2,transparent:true,opacity:0.95,depthWrite:false});
+  return new THREE.Points(g,mat);
+}
+const ring1 = makeRing(1400,120,160,false); scene.add(ring1);
+const ring2 = makeRing(600,120,160,true); ring2.rotation.x = 0.5; scene.add(ring2);
+
+// Corazón
+const heartGroup = new THREE.Group();
+const inner = new THREE.Mesh(new THREE.TorusGeometry(20,0,30,10), new THREE.MeshStandardMaterial({color:0xff4766,roughness:0.4,metalness:0.2}));
+inner.position.set(0,10,0); heartGroup.add(inner);
+const glow = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array([0,90,0]),3)), new THREE.PointsMaterial({map:heartTex,size:140,transparent:true,opacity:0.6,depthWrite:false}));
+heartGroup.add(glow);
+scene.add(heartGroup);
+
+const ambient = new THREE.AmbientLight(0xffffff,0.6); scene.add(ambient);
+const dir = new THREE.DirectionalLight(0xffa6b8,0.6); dir.position.set(100,200,100); scene.add(dir);
+
+// Iconos / fotos
+const iconsGroup = new THREE.Group(); scene.add(iconsGroup);
+const markers = [];
+const TOTAL = 80;
+const loader = new THREE.TextureLoader();
+const placeholder = loader.load('https://upload.wikimedia.org/wikipedia/commons/6/65/No-Image-Placeholder.svg');
+for(let i=0;i<TOTAL;i++){
+  const mat = new THREE.SpriteMaterial({map:placeholder,transparent:true});
+  const s = new THREE.Sprite(mat); s.scale.set(20,20,1);
+  const a=Math.random()*Math.PI*2, r=200+Math.random()*70;
+  s.position.set(Math.cos(a)*r, (Math.random()-0.5)*110, Math.sin(a)*r);
+  iconsGroup.add(s); markers.push(s);
+}
+
+// --------------------------- Cargar fotos predefinidas ---------------------------
+const predefinedImages = ['1.jpg', '2.jpg', '3.jpg', '4.jpg', '5.jpg', '6.jpg', '7.jpg'];
+const texs = [];
+let loaded = 0;
+predefinedImages.forEach((file, idx) => {
+  loader.load(file, (t) => {
+    texs[idx] = t;
+    loaded++;
+    if (loaded === predefinedImages.length) {
+      applyUserTextures(texs);
+    }
+  });
+});
+
+function applyUserTextures(textures){
+  for(let i=0;i<markers.length;i++){
+    const t = textures[i % textures.length];
+    markers[i].material.map = t;
+    markers[i].material.needsUpdate=true;
+  }
+  let idx=0;
+  setInterval(()=>{
+    idx=(idx+1)%textures.length;
+    for(let i=0;i<markers.length;i++){
+      markers[i].material.map = textures[(i+idx) % textures.length];
+      markers[i].material.needsUpdate=true;
+    }
+  }, 4000);
+}
+
+// Preview
+const preview = document.getElementById('preview');
+const prevImg = document.getElementById('prevImg');
+const closePrev = document.getElementById('closePrev');
+closePrev.addEventListener('click', ()=> preview.style.display='none');
+
+document.addEventListener('pointerdown', (evt)=>{
+  const mouse = new THREE.Vector2();
+  const raycaster = new THREE.Raycaster();
+  mouse.x = (evt.clientX / innerWidth) * 2 - 1;
+  mouse.y = - (evt.clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObjects(markers);
+  if(intersects.length){
+    const s = intersects[0].object;
+    if(s.material.map && s.material.map.image){
+      prevImg.src = s.material.map.image.currentSrc || s.material.map.image.src || s.material.map.image;
+      preview.style.display='block';
+    }
+  }
+});
+
+// Música
+const musicBtn = document.getElementById('musicBtn');
+const musicLabel = document.getElementById('musicLabel');
+const audio = new Audio(); audio.loop=true; audio.crossOrigin='anonymous';
+audio.src='https://cdn.pixabay.com/download/audio/2021/12/21/audio_3f1f5a3d3f.mp3?filename=romantic-ambient-110818.mp3';
+let musicOn=false;
+musicBtn.addEventListener('click', ()=>{
+  if(!musicOn){ audio.play().catch(()=>{}); musicOn=true; musicLabel.textContent='Música: ON'; }
+  else{ audio.pause(); musicOn=false; musicLabel.textContent='Música: OFF'; }
+});
+
+// Resize
+window.addEventListener('resize', ()=>{ camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+// Animación
+function animate(t){
+  requestAnimationFrame(animate);
+  camAngle += 0.0006; camera.position.x = Math.cos(camAngle)*420; camera.position.z = Math.sin(camAngle)*420; camera.lookAt(0,20,0);
+  planet.rotation.y += 0.003; ring1.rotation.y += 0.002; ring2.rotation.y -= 0.0016; iconsGroup.rotation.y += 0.0018;
+  heartGroup.rotation.y += 0.008; inner.rotation.x = 0.06*Math.sin(t*0.002); inner.rotation.y += 0.004;
+  const beat = 1 + Math.sin(t*0.006)*0.05; heartGroup.scale.set(beat,beat,beat);
+  renderer.render(scene,camera);
+}
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>
